@@ -7,6 +7,7 @@ from inspect import getsource, getfile
 # A decorator is used to update a function at runtime.
 
 DecoratorName = 'realtimefunc'
+suffix = '_runtime'
 
 PY3 = sys.version_info >= (3,)
 if PY3:
@@ -23,6 +24,7 @@ def _exec_in(code, glob, loc=None):
     exec(code, glob, loc)
 
 def _handle_real_time_func_code(func, split='\n'):
+    linecache.clearcache()
     code = getsource(func)
     i_indent = 0
     i_decorator = 0
@@ -34,6 +36,8 @@ def _handle_real_time_func_code(func, split='\n'):
 
         if  func_pat.match(line):
             i_indent = line.index("def")
+            # the raw function will be called rather than the one decorated, sometime.
+            code_lines[i] = code_lines[i].replace(func.func_name, func.func_name+suffix, 1)
             break
     # rm realtimefunc decorator
     code_lines.pop(i_decorator)
@@ -50,5 +54,8 @@ def realtimefunc(func):
         code_str = _handle_real_time_func_code(func)
         _exec_in(code_str,func.__globals__, func.__globals__)
         # A return expected when is work, if not yield instead.
-        return func.__globals__[func.__name__](*args, **kwargs)
+        yield func.__globals__[func.__name__+suffix](*args, **kwargs)
     return wrapper
+
+
+
