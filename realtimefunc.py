@@ -24,7 +24,6 @@ def _exec_in(code, glob, loc=None):
     exec(code, glob, loc)
 
 def _handle_real_time_func_code(func, split='\n'):
-    linecache.clearcache()
     code = getsource(func)
     i_indent = 0
     i_decorator = 0
