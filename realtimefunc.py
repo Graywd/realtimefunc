@@ -54,7 +54,7 @@ def realtimefunc(func):
         code_str = _handle_real_time_func_code(func)
         _exec_in(code_str,func.__globals__, func.__globals__)
         # A return expected when is work, if not yield instead.
-        yield func.__globals__[func.__name__+suffix](*args, **kwargs)
+        return func.__globals__[func.__name__+suffix](*args, **kwargs)
     return wrapper
 
 
