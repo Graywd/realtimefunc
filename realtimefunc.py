@@ -1,10 +1,9 @@
-# -*- coding: iso-8859-1 -*-
+"""A decorator is used to update a function at runtime"""
 import sys
-import linecache
 import re
+import functools
+import linecache
 from inspect import getsource, getfile
-
-# A decorator is used to update a function at runtime.
 
 DecoratorName = 'realtimefunc'
 suffix = '_runtime'
@@ -25,34 +24,31 @@ def _exec_in(code, glob, loc=None):
 
 def _handle_real_time_func_code(func, split='\n'):
     code = getsource(func)
-    i_indent = 0
-    i_decorator = 0
     code_lines = code.split(split)
-    func_pat = re.compile(r'^\s*def\s+'+func.__name__)
-    for i, line in enumerate(code_lines):
-        if "@"+DecoratorName in line:
-            i_decorator = i
 
-        if  func_pat.match(line):
-            i_indent = line.index("def")
-            # the raw function will be called rather than the one decorated, sometime.
-            code_lines[i] = code_lines[i].replace(func.func_name, func.func_name+suffix, 1)
-            break
-    # rm realtimefunc decorator
-    code_lines.pop(i_decorator)
+    func_pat = re.compile(r'^\s*def\s+'+func.__name__)
+    #rm decorators
+    while not func_pat.match(code_lines[0]):
+        code_lines.pop(0)
+
+    indent = code_lines[0].index("def")
+    # the raw function will be called rather than the one decorated, sometime.
+    code_lines[0] = code_lines[0].replace(func.func_name, func.func_name+suffix, 1)
+
     # code indentation
-    code_lines = [line[i_indent:] for line in code_lines]
+    code_lines = [line[indent:] for line in code_lines]
     code = split.join(code_lines)
     return code
 
 def realtimefunc(func):
+    """Decorator for update a function at runtime"""
+    @functools.wraps(func)
     def wrapper(*args, **kwargs):
         filename = getfile(func)
         # inspect use linecache to do file cache, so do checkcache first
         linecache.checkcache(filename)
         code_str = _handle_real_time_func_code(func)
         _exec_in(code_str,func.__globals__, func.__globals__)
-        # A return expected when is work, if not yield instead.
         return func.__globals__[func.__name__+suffix](*args, **kwargs)
     return wrapper
 
