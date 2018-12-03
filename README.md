@@ -10,4 +10,7 @@ from /path/to/realtimefunc import realtimefunc
 def test():
     # function body
 ```
+### TODO
+- [ ] add support to log
+- [ ] add cache
 
