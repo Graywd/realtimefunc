@@ -65,7 +65,6 @@ def get_qualname(func):
 
 
 def get_func_real_firstlineno(func):
-    '''correct co_firstlineno when some change happen around func'''
     start_lineno = 0
     lines = linecache.getlines(func.__code__.co_filename)
     cls = _findclass(func)
@@ -95,7 +94,6 @@ def get_func_real_firstlineno(func):
 
 
 def get_source_code(func, func_runtime_name, firstlineno):
-    '''handle the <string> code that used to define a memory function.'''
     lines = linecache.getlines(func.__code__.co_filename)
     code_lines = getblock(lines[firstlineno:])
     # repalce function name
