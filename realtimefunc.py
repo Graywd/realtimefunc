@@ -4,45 +4,37 @@ from __future__ import print_function
 import sys
 import os
 import re
+import ast
 import linecache
 import functools
 import traceback
-import logging
-from inspect import isclass, findsource, getblock
+from inspect import getfile, isclass, findsource, getblock
+
+__all__ = ["realtimefunc"]
 
 Decorator = "@realtimefunc"
 
-DecoratoredFuncs = {}
-
-# referenced from tornado util.py
 PY3 = sys.version_info >= (3,)
-if PY3:
-    basestring_type = str
-else:
-    basestring_type = basestring  # noqa
 
 
-def _exec_in(code, glob, loc=None):
-    # type: (Any, Dict[str, Any], Optional[Mapping[str, Any]]) -> Any
-    if isinstance(code, basestring_type):
-        # exec(string) inherits the caller's future imports; compile
-        # the string first to prevent that.
-        code = compile(code, '<string>', 'exec', dont_inherit=True)
+# The cache
+
+# record, used to record functions decorated by realtimefunc,
+# is a dict {filename:{func1, func2}
+# refresh, used to to mark functions which source file stat has changed,
+# is also a dict {filename:{func1, func2}}
+
+# Note: the filename may be repeated but it doesn't matter.
+
+record = {}
+refresh = {}
+
+
+def _exec(code, filepath, firstlineno, glob, loc=None):
+    astNode = ast.parse(code)
+    astNode = ast.increment_lineno(astNode, firstlineno)
+    code = compile(astNode, filepath, 'exec')
     exec(code, glob, loc)
-
-
-class Filter(logging.Filter):
-    '''A logging Filter, try to make logging record of realtimefunc more readable'''
-    def filter(self, record):
-        if record.funcName in DecoratoredFuncs:
-            func = DecoratoredFuncs[record.funcName]
-            record.pathname = os.path.normcase(os.path.abspath(func.__code__.co_filename))
-            record.filename = os.path.basename(record.pathname)
-            record.module = os.path.splitext(record.filename)[0]
-            record.lineno += func._real__code__firstlineno
-            return 1
-
-        return super(Filter, self).filter(record)
 
 
 def _findclass(func):
@@ -72,43 +64,7 @@ def get_qualname(func):
     return '.'.join(qualname[::-1])
 
 
-def print_exception(etype, value, frames, file=None, chain=True):
-    '''print exception with readable traceback.'''
-    if file is None:
-        file = sys.stderr
-    if frames:
-        print("realtimefunc Traceback (most recent call last):\n", file=file, end="")
-        traceback.print_list(frames, file)
-    lines = traceback.format_exception_only(etype, value)
-    for line in lines:
-        print(line, file=file, end="")
-    raise
-
-
-def raise_exc_info(func, firstlineno, func_runtime_name):
-    '''raise exe info and map <string> location to corresponding file location that func defined.'''
-    exc_type, value, tb = sys.exc_info()
-    frames = traceback.extract_tb(tb)
-    if PY3:
-        for frame in frames:
-            if frame.name == func_runtime_name and frame.filename == '<string>':
-                frame.name = func.__name__
-                frame.filename = os.path.normcase(os.path.abspath(func.__code__.co_filename))
-                frame.lineno += firstlineno
-    else:
-        # frams = [(filename, lineno, name, line)), ...]
-        for i, frame in enumerate(frames):
-            if frame[2] == func_runtime_name and frame[0] == '<string>':
-                frames[i] = (
-                    os.path.normcase(os.path.abspath(func.__code__.co_filename)),
-                    frame[1] + firstlineno,
-                    func.__name__,
-                    frame[3],
-                )
-    print_exception(exc_type, value, frames)
-
-
-def correct_func_co_firstlineno(func):
+def get_func_real_firstlineno(func):
     '''correct co_firstlineno when some change happen around func'''
     start_lineno = 0
     lines = linecache.getlines(func.__code__.co_filename)
@@ -138,7 +94,7 @@ def correct_func_co_firstlineno(func):
         raise OSError('could not find function definition')
 
 
-def _handle_real_time_func_code(func, func_runtime_name, firstlineno):
+def get_source_code(func, func_runtime_name, firstlineno):
     '''handle the <string> code that used to define a memory function.'''
     lines = linecache.getlines(func.__code__.co_filename)
     code_lines = getblock(lines[firstlineno:])
@@ -151,29 +107,53 @@ def _handle_real_time_func_code(func, func_runtime_name, firstlineno):
     return code
 
 
+def check_file_stat(filename):
+    entry = linecache.cache.get(filename, None)
+    change = False
+    if not entry:
+        change = True
+    else:
+        size, mtime, _, fullname = entry
+        print(fullname)
+        try:
+            stat = os.stat(fullname)
+        except OSError:
+            change = True
+            del linecache.cache[filename]
+        if size != stat.st_size or mtime != stat.st_mtime:
+            change = True
+            del linecache.cache[filename]
+
+    if change:
+        global refresh
+        for f in record[filename]:
+            refresh.setdefault(filename, set()).add(f)
+
+
 def realtimefunc(func):
     # python2 need set __qualname__ by hand
-    global DecoratoredFuncs
     if not PY3:
         func.__qualname__ = get_qualname(func)
-    func_runtime_name = func.__qualname__.replace('.', '_') + '_runtime'
-    func._real__code__firstlineno = func.__code__.co_filename
-    DecoratoredFuncs[func_runtime_name] = func
+    func_real_name = func.__qualname__.replace('.', '_') + '_realfunc'
+    filename = getfile(func)
+    filepath = os.path.abspath(filename)
+    global record, refresh
+    record.setdefault(filename, set()).add(func)
+    refresh.setdefault(filename, set()).add(func)
+
 
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
         # inspect use linecache to do file cache, so do checkcache first
-        linecache.checkcache(func.__code__.co_filename)
-        firstlineno = correct_func_co_firstlineno(func)
-        func._real__code__firstlineno = firstlineno
-        code_str = _handle_real_time_func_code(func, func_runtime_name, firstlineno)
-        _exec_in(code_str, func.__globals__)
-        try:
-            func_realtime = func.__globals__[func_runtime_name]
-            return func_realtime(*args, **kwargs)
-        except Exception:
-            # note: if func_realtime is a generator, this block will not be called
-            # TODO:  to make traceback more readable can reference https://github.com/pallets/jinja/blob/master/jinja2/debug.py
-            raise_exc_info(func, firstlineno, func_runtime_name)
+        glob = func.__globals__
+        check_file_stat(filename)
+        if func in refresh.get(filename, {}):
+            firstlineno = get_func_real_firstlineno(func)
+            code_str = get_source_code(func, func_real_name, firstlineno)
+            _exec(code_str, filepath, firstlineno, glob)
+            refresh[filename].remove(func)
+        func_realtime = glob[func_real_name]
+        return func_realtime(*args, **kwargs)
 
     return wrapper
+

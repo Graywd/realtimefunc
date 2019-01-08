@@ -11,6 +11,6 @@ def test():
     # function body
 ```
 ### TODO
-- [ ] add support to log
-- [ ] add cache
-
+- [x] beautify stack info
+- [x] support log
+- [x] cache
