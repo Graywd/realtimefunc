@@ -10,7 +10,12 @@ from /path/to/realtimefunc import realtimefunc
 def test():
     # function body
 ```
+
+### NOTE
+`super()` is not allowed while `super(kls, obj)` is ok.
+
 ### TODO
 - [x] beautify stack info
 - [x] support log
 - [x] cache
+- [ ] support `super()`
