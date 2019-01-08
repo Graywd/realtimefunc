@@ -112,7 +112,6 @@ def check_file_stat(filename):
         change = True
     else:
         size, mtime, _, fullname = entry
-        print(fullname)
         try:
             stat = os.stat(fullname)
         except OSError:
@@ -145,7 +144,7 @@ def realtimefunc(func):
         # inspect use linecache to do file cache, so do checkcache first
         glob = func.__globals__
         check_file_stat(filename)
-        if func in refresh.get(filename, {}):
+        if func in refresh[filename]:
             firstlineno = get_func_real_firstlineno(func)
             code_str = get_source_code(func, func_real_name, firstlineno)
             _exec(code_str, filepath, firstlineno, glob)
