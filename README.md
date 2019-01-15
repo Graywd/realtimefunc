@@ -1,9 +1,14 @@
 # realtimefunc
 A decorator is used to update a function at runtime.
 
+### install
+```
+pip install realtimefunc
+```
+
 ### usage
 ```
-from /path/to/realtimefunc import realtimefunc
+from realtimefunc import realtimefunc
 
 @coroutine
 @realtimefunc
