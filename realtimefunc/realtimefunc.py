@@ -138,7 +138,6 @@ def realtimefunc(func):
     record.setdefault(filename, set()).add(func)
     refresh.setdefault(filename, set()).add(func)
 
-
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
         glob = func.__globals__
