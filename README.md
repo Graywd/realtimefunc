@@ -1,5 +1,5 @@
 # realtimefunc
-A decorator is used to update a function at runtime to easy correct code in development.
+A decorator is used to update a function at runtime to easy correct code in development without restart server.
 
 ### install
 ```
